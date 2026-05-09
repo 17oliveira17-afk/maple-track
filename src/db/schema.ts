@@ -135,6 +135,17 @@ export const achievementTypeEnum = pgEnum("achievement_type", [
   "SCORE",
 ]);
 
+export const jobApplicationStatusEnum = pgEnum("job_application_status", [
+  "SAVED",
+  "PREPARING",
+  "APPLIED",
+  "VIEWED",
+  "INTERVIEW",
+  "OFFER",
+  "REJECTED",
+  "WITHDRAWN",
+]);
+
 // ════════════════════════════════════════════
 // AUTH TABLES (Auth.js / Drizzle Adapter)
 // ════════════════════════════════════════════
@@ -420,6 +431,59 @@ export const achievements = pgTable("achievements", {
   icon: text("icon"),
   unlockedAt: timestamp("unlocked_at", { withTimezone: true }),
   metadata: json("metadata").$type<Record<string, unknown>>(),
+});
+
+// ════════════════════════════════════════════
+// JOB APPLICATIONS
+// ════════════════════════════════════════════
+
+export const jobPreferences = pgTable("job_preferences", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  profileId: uuid("profile_id")
+    .notNull()
+    .unique()
+    .references(() => profiles.id, { onDelete: "cascade" }),
+  jobTitles: text("job_titles").array().default([]).notNull(),
+  keywords: text("keywords").array().default([]).notNull(),
+  nocCodes: text("noc_codes").array().default([]).notNull(),
+  provinces: text("provinces").array().default(["NB", "NS", "PE", "NL"]).notNull(),
+  minSalary: integer("min_salary"),
+  aipOnly: boolean("aip_only").default(true).notNull(),
+  cvText: text("cv_text"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const jobApplications = pgTable("job_applications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  profileId: uuid("profile_id")
+    .notNull()
+    .references(() => profiles.id, { onDelete: "cascade" }),
+  householdId: uuid("household_id")
+    .notNull()
+    .references(() => households.id, { onDelete: "cascade" }),
+  // Job info
+  externalId: text("external_id"),
+  jobTitle: text("job_title").notNull(),
+  company: text("company").notNull(),
+  location: text("location"),
+  salary: text("salary"),
+  jobUrl: text("job_url"),
+  jobDescription: text("job_description"),
+  isAip: boolean("is_aip").default(false).notNull(),
+  program: text("program"),
+  // Status pipeline
+  status: jobApplicationStatusEnum("status").default("SAVED").notNull(),
+  appliedAt: timestamp("applied_at", { withTimezone: true }),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+  interviewAt: timestamp("interview_at", { withTimezone: true }),
+  // AI-generated content
+  generatedCoverLetter: text("generated_cover_letter"),
+  cvTips: text("cv_tips"),
+  compatibilityScore: integer("compatibility_score"),
+  // Notes
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // ════════════════════════════════════════════
