@@ -7,7 +7,20 @@ import {
   Plus, Loader2, Trophy, ArrowRight, MapPin, DollarSign,
   Calendar, Users, RefreshCw, BookOpen,
 } from "lucide-react";
-import type { JobBankListing } from "@/lib/job-bank";
+// Unified job type from API (JSearch + Job Bank merged)
+interface SearchJob {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  salary: string;
+  date: string;
+  url: string;
+  source: string;
+  description: string;
+  isRemote: boolean;
+  employmentType: string;
+}
 
 // ─────────────────────────────────────────────
 // Types
@@ -101,7 +114,7 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
 
   // Search state
   const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<JobBankListing[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchJob[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchProfile, setSearchProfile] = useState(profiles[0]?.id || "");
 
@@ -143,7 +156,7 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
   }, [query]);
 
   // Save job to pipeline
-  async function saveJob(job: JobBankListing) {
+  async function saveJob(job: SearchJob) {
     const r = await fetch("/api/jobs/applications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -339,8 +352,17 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-bold text-foreground">{job.title}</h3>
-                        {job.isDirectApply && (
-                          <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-bold text-success">Direct Apply</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          job.source.includes("LinkedIn") ? "bg-blue-100 text-blue-700"
+                          : job.source.includes("Indeed") ? "bg-purple-100 text-purple-700"
+                          : job.source.includes("Glassdoor") ? "bg-green-100 text-green-700"
+                          : job.source.includes("Job Bank") ? "bg-primary/10 text-primary"
+                          : "bg-surface text-foreground-muted"
+                        }`}>
+                          via {job.source}
+                        </span>
+                        {job.isRemote && (
+                          <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-bold text-accent">Remote</span>
                         )}
                       </div>
                       <p className="mt-0.5 text-sm font-medium text-foreground-muted">{job.company}</p>
