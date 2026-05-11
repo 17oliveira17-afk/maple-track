@@ -117,6 +117,8 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchJob[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchPage, setSearchPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [searchProfile, setSearchProfile] = useState(profiles[0]?.id || "");
 
   // Detail panel
@@ -144,17 +146,27 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
   }
 
   // Search Job Bank
-  const handleSearch = useCallback(async () => {
+  const handleSearch = useCallback(async (loadMore = false) => {
     if (!query.trim()) return;
-    setSearching(true);
+    const page = loadMore ? searchPage + 1 : 1;
+    if (loadMore) setLoadingMore(true); else setSearching(true);
     try {
-      const r = await fetch(`/api/jobs/search?q=${encodeURIComponent(query)}&location=Canada`);
+      const r = await fetch(`/api/jobs/search?q=${encodeURIComponent(query)}&location=Canada&page=${page}`);
       const data = await r.json();
-      setSearchResults(data);
+      if (loadMore) {
+        setSearchResults((prev) => {
+          const ids = new Set(prev.map((j) => j.id));
+          return [...prev, ...data.filter((j: SearchJob) => !ids.has(j.id))];
+        });
+      } else {
+        setSearchResults(data);
+      }
+      setSearchPage(page);
     } finally {
       setSearching(false);
+      setLoadingMore(false);
     }
-  }, [query]);
+  }, [query, searchPage]);
 
   // Save job to pipeline
   async function saveJob(job: SearchJob) {
@@ -305,13 +317,13 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch(false)}
                   placeholder="Ex: Product Designer, UX Designer..."
                   className="w-full rounded-xl border border-border/60 bg-surface/40 py-2.5 pl-10 pr-4 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
                 />
               </div>
               <button
-                onClick={handleSearch}
+                onClick={() => handleSearch(false)}
                 disabled={searching}
                 className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60 hover:bg-primary/90"
               >
@@ -346,7 +358,10 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
 
           {!searching && searchResults.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-foreground-muted">{searchResults.length} vagas encontradas</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-foreground-muted">{searchResults.length} vagas encontradas</p>
+                <p className="text-[10px] text-foreground-dim">LinkedIn • Indeed • Glassdoor • Job Bank • +</p>
+              </div>
               {searchResults.map((job) => (
                 <div key={job.id} className="rounded-2xl border border-border/60 bg-white p-4 shadow-sm hover:border-primary/30 transition-all">
                   <div className="flex items-start justify-between gap-3">
@@ -397,6 +412,15 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
                   </div>
                 </div>
               ))}
+              {/* Load more button */}
+              <button
+                onClick={() => handleSearch(true)}
+                disabled={loadingMore}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-border/60 bg-white py-3 text-sm font-semibold text-foreground-muted hover:border-primary/40 hover:text-primary disabled:opacity-60"
+              >
+                {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                {loadingMore ? "Carregando..." : "Carregar mais vagas"}
+              </button>
             </div>
           )}
 

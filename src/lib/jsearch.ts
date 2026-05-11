@@ -37,30 +37,34 @@ export async function searchJobs(params: JSearchParams): Promise<JSearchJob[]> {
     ? `${params.query} in ${params.location}`
     : params.query;
 
-  const url = new URL("https://jsearch.p.rapidapi.com/search");
-  url.searchParams.set("query", q);
-  url.searchParams.set("page", String(params.page || 1));
-  url.searchParams.set("num_pages", "1");
-  url.searchParams.set("country", params.country || "ca");
-  if (params.datePosted) url.searchParams.set("date_posted", params.datePosted);
-  if (params.remoteOnly) url.searchParams.set("remote_jobs_only", "true");
+  // Fetch multiple pages in parallel (3 pages = ~30 results)
+  const pagesToFetch = [params.page || 1, (params.page || 1) + 1, (params.page || 1) + 2];
 
   try {
-    const res = await fetch(url.toString(), {
-      headers: {
-        "x-rapidapi-host": HOST,
-        "x-rapidapi-key": apiKey,
-      },
-      next: { revalidate: 600 }, // cache 10 min
+    const fetches = pagesToFetch.map(async (pg) => {
+      const url = new URL("https://jsearch.p.rapidapi.com/search");
+      url.searchParams.set("query", q);
+      url.searchParams.set("page", String(pg));
+      url.searchParams.set("num_pages", "1");
+      url.searchParams.set("country", params.country || "ca");
+      if (params.datePosted) url.searchParams.set("date_posted", params.datePosted);
+      if (params.remoteOnly) url.searchParams.set("remote_jobs_only", "true");
+
+      const res = await fetch(url.toString(), {
+        headers: {
+          "x-rapidapi-host": HOST,
+          "x-rapidapi-key": apiKey,
+        },
+        next: { revalidate: 600 },
+      });
+
+      if (!res.ok) return [];
+      const json = await res.json();
+      return json.data || [];
     });
 
-    if (!res.ok) {
-      console.error("[JSEARCH] API error:", res.status);
-      return [];
-    }
-
-    const json = await res.json();
-    const data = json.data || [];
+    const results = await Promise.all(fetches);
+    const data = results.flat();
 
     return data.map((job: any) => ({
       id: job.job_id || String(Math.random()),
