@@ -20,6 +20,7 @@ interface SearchJob {
   description: string;
   isRemote: boolean;
   employmentType: string;
+  program?: string | null;
 }
 
 // ─────────────────────────────────────────────
@@ -147,7 +148,7 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
     if (!query.trim()) return;
     setSearching(true);
     try {
-      const r = await fetch(`/api/jobs/search?q=${encodeURIComponent(query)}&provinces=NB,NS,PE,NL`);
+      const r = await fetch(`/api/jobs/search?q=${encodeURIComponent(query)}&location=Canada`);
       const data = await r.json();
       setSearchResults(data);
     } finally {
@@ -331,7 +332,7 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
                   {p.firstName}
                 </button>
               ))}
-              <span className="ml-1 text-foreground-dim">— Atlantic Canada (NB, NS, PE, NL)</span>
+              <span className="ml-1 text-foreground-dim">— Todo o Canada (vagas AIP sinalizadas)</span>
             </div>
           </div>
 
@@ -361,6 +362,9 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
                         }`}>
                           via {job.source}
                         </span>
+                        {job.program && (
+                          <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-bold text-success">{job.program} ✓</span>
+                        )}
                         {job.isRemote && (
                           <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-bold text-accent">Remote</span>
                         )}
@@ -407,7 +411,7 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
             <div className="rounded-2xl border border-dashed border-border/60 bg-white py-12 text-center">
               <BookOpen className="mx-auto mb-2 h-8 w-8 text-foreground-dim" />
               <p className="text-sm font-medium text-foreground-muted">Busque vagas no Job Bank Canada</p>
-              <p className="mt-1 text-xs text-foreground-dim">Filtro automático para Atlantic Canada (AIP)</p>
+              <p className="mt-1 text-xs text-foreground-dim">LinkedIn, Indeed, Glassdoor, Job Bank e mais — todo o Canada</p>
             </div>
           )}
         </div>

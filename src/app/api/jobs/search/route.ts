@@ -3,19 +3,33 @@ import { auth } from "@/lib/auth";
 import { searchJobs } from "@/lib/jsearch";
 import { searchJobBank } from "@/lib/job-bank";
 
+// Atlantic provinces for AIP tagging
+const AIP_PROVINCES = ["NB", "NS", "PE", "NL"];
+const AIP_LOCATIONS = [
+  "new brunswick", "nova scotia", "prince edward island",
+  "newfoundland", "labrador", "fredericton", "moncton",
+  "saint john", "halifax", "dartmouth", "charlottetown",
+  "st. john's", "corner brook",
+];
+
+function isAipLocation(location: string): boolean {
+  const lower = (location || "").toLowerCase();
+  return AIP_LOCATIONS.some((loc) => lower.includes(loc));
+}
+
 export async function GET(request: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
   const keywords = searchParams.get("q") || "";
-  const location = searchParams.get("location") || "Atlantic Canada";
+  const location = searchParams.get("location") || "Canada";
   const page = Number(searchParams.get("page") || "1");
   const datePosted = searchParams.get("date") || "all";
 
   if (!keywords.trim()) return NextResponse.json([]);
 
-  // Search both sources in parallel
+  // Search ALL of Canada via JSearch + Atlantic Job Bank in parallel
   const [jsearchResults, jobBankResults] = await Promise.all([
     searchJobs({
       query: keywords,
@@ -26,12 +40,18 @@ export async function GET(request: Request) {
     }),
     searchJobBank({
       keywords,
-      provinces: ["NB", "NS", "PE", "NL"],
+      provinces: AIP_PROVINCES,
       page,
     }),
   ]);
 
-  // Normalize Job Bank results to same shape
+  // Normalize JSearch results — tag AIP if in Atlantic location
+  const normalizedJSearch = jsearchResults.map((j) => ({
+    ...j,
+    program: isAipLocation(j.location) ? "AIP" : null,
+  }));
+
+  // Normalize Job Bank results — all from Atlantic = AIP eligible
   const normalizedJobBank = jobBankResults.map((j) => ({
     id: `jb-${j.id}`,
     title: j.title,
@@ -44,12 +64,13 @@ export async function GET(request: Request) {
     description: "",
     isRemote: false,
     employmentType: "",
+    program: "AIP" as string | null,
   }));
 
-  // Merge: JSearch first (broader), then Job Bank
-  const all = [...jsearchResults, ...normalizedJobBank];
+  // Merge all results
+  const all = [...normalizedJSearch, ...normalizedJobBank];
 
-  // Dedupe by company+title similarity
+  // Dedupe by company+title
   const seen = new Set<string>();
   const deduped = all.filter((job) => {
     const key = `${job.company.toLowerCase().slice(0, 20)}|${job.title.toLowerCase().slice(0, 30)}`;
