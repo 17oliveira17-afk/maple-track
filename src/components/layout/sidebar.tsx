@@ -15,13 +15,14 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Compass,
+  Briefcase,
 } from "lucide-react";
 import { MapleLeaf } from "@/components/ui/maple-leaf";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/journey", label: "Jornada", icon: Route },
+  { href: "/jobs", label: "Vagas", icon: Briefcase },
   { href: "/languages", label: "Idiomas", icon: Languages },
   { href: "/documents", label: "Documentos", icon: FileText },
   { href: "/simulator", label: "Simulador CRS", icon: Calculator },
