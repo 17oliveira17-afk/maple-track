@@ -15,6 +15,8 @@ const updateSchema = z.object({
   generatedCoverLetter: z.string().optional(),
   cvTips: z.string().optional(),
   compatibilityScore: z.number().optional(),
+  appliedVia: z.string().optional(),
+  appliedToEmail: z.string().optional(),
 });
 
 type Ctx = { params: Promise<{ appId: string }> };
@@ -46,6 +48,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (data.generatedCoverLetter) updateData.generatedCoverLetter = data.generatedCoverLetter;
   if (data.cvTips) updateData.cvTips = data.cvTips;
   if (data.compatibilityScore !== undefined) updateData.compatibilityScore = data.compatibilityScore;
+  if (data.appliedVia) updateData.appliedVia = data.appliedVia;
+  if (data.appliedToEmail) updateData.appliedToEmail = data.appliedToEmail;
 
   const [updated] = await db
     .update(jobApplications)

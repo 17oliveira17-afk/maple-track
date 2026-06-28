@@ -131,3 +131,71 @@ export async function getJobPosting(jobId: string): Promise<string> {
     return "";
   }
 }
+
+// ─── Enhanced: extract application details from a Job Bank posting ───
+
+export interface JobApplyInfo {
+  description: string;
+  email: string | null;
+  applyUrl: string | null;
+  howToApply: string;
+  contactName: string | null;
+}
+
+export async function getJobApplyInfo(jobId: string): Promise<JobApplyInfo> {
+  const empty: JobApplyInfo = {
+    description: "",
+    email: null,
+    applyUrl: null,
+    howToApply: "",
+    contactName: null,
+  };
+
+  try {
+    const res = await fetch(`${BASE}/jobsearch/jobposting/${jobId}`, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return empty;
+    const html = await res.text();
+
+    // Extract description
+    const descMatch = html.match(/id="tp-wgv-cont"[^>]*>([\s\S]*?)<\/section>/);
+    const description = descMatch ? clean(descMatch[1]).slice(0, 5000) : "";
+
+    // Extract "How to apply" section
+    const howToMatch = html.match(/how[\s-]*to[\s-]*apply([\s\S]*?)(?:<\/section>|<section)/i);
+    const howToApply = howToMatch ? clean(howToMatch[1]) : "";
+
+    // Extract email addresses from the page
+    const emailRegex = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
+    const fullText = howToApply || html;
+    const emails = fullText.match(emailRegex) || [];
+    // Filter out common non-application emails
+    const applicationEmail = emails.find((e) =>
+      !e.includes("jobbank") &&
+      !e.includes("canada.ca") &&
+      !e.includes("noreply") &&
+      !e.includes("donotreply") &&
+      !e.includes("no-reply")
+    ) || null;
+
+    // Extract apply URL (online application link)
+    const applyUrlMatch = html.match(/href="([^"]*)"[^>]*>\s*(?:Apply|Postuler|Submit|Apply online)/i);
+    const applyUrl = applyUrlMatch ? applyUrlMatch[1] : null;
+
+    // Extract contact name
+    const contactMatch = howToApply.match(/(?:contact|name|attention|attn)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/i);
+    const contactName = contactMatch ? contactMatch[1].trim() : null;
+
+    return {
+      description,
+      email: applicationEmail,
+      applyUrl,
+      howToApply,
+      contactName,
+    };
+  } catch {
+    return empty;
+  }
+}

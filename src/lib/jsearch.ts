@@ -79,7 +79,7 @@ export async function searchJobs(params: JSearchParams): Promise<JSearchJob[]> {
         : "",
       url: job.job_apply_link || job.job_google_link || "",
       source: job.job_publisher || "Unknown",
-      description: (job.job_description || "").slice(0, 2000),
+      description: (job.job_description || "").slice(0, 5000),
       isRemote: job.job_is_remote || false,
       employmentType: job.job_employment_type || "",
     }));

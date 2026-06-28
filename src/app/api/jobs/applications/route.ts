@@ -53,6 +53,17 @@ export async function POST(request: Request) {
   });
   if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
+  // Deduplicate: if an application with the same externalId + profileId already exists, return it
+  if (data.externalId) {
+    const existing = await db.query.jobApplications.findFirst({
+      where: and(
+        eq(jobApplications.externalId, data.externalId),
+        eq(jobApplications.profileId, data.profileId),
+      ),
+    });
+    if (existing) return NextResponse.json(existing, { status: 200 });
+  }
+
   const [app] = await db.insert(jobApplications).values({
     profileId: data.profileId,
     householdId,

@@ -146,6 +146,31 @@ export const jobApplicationStatusEnum = pgEnum("job_application_status", [
   "WITHDRAWN",
 ]);
 
+export const screeningCategoryEnum = pgEnum("screening_category", [
+  "WORK_AUTHORIZATION",
+  "EXPERIENCE",
+  "EDUCATION",
+  "LANGUAGES",
+  "AVAILABILITY",
+  "SALARY",
+  "RELOCATION",
+  "OTHER",
+]);
+
+export const autoApplyStatusEnum = pgEnum("auto_apply_status", [
+  "SUCCESS",
+  "PARTIAL",
+  "FAILED",
+  "SKIPPED",
+]);
+
+export const autoApplySiteEnum = pgEnum("auto_apply_site", [
+  "LINKEDIN",
+  "INDEED",
+  "JOBBANK",
+  "OTHER",
+]);
+
 // ════════════════════════════════════════════
 // AUTH TABLES (Auth.js / Drizzle Adapter)
 // ════════════════════════════════════════════
@@ -480,10 +505,56 @@ export const jobApplications = pgTable("job_applications", {
   generatedCoverLetter: text("generated_cover_letter"),
   cvTips: text("cv_tips"),
   compatibilityScore: integer("compatibility_score"),
+  // Application method tracking
+  appliedVia: text("applied_via"), // "email" | "manual" | "auto" | null
+  appliedToEmail: text("applied_to_email"), // email address where application was sent
+  coverLetterGeneratedAt: timestamp("cover_letter_generated_at", { withTimezone: true }),
   // Notes
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ════════════════════════════════════════════
+// EXTENSION & AUTO-APPLY
+// ════════════════════════════════════════════
+
+export const extensionTokens = pgTable("extension_tokens", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").unique().notNull(),
+  name: text("name").notNull(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const screeningAnswers = pgTable("screening_answers", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  profileId: uuid("profile_id")
+    .notNull()
+    .references(() => profiles.id, { onDelete: "cascade" }),
+  question: text("question").notNull(),
+  answer: text("answer").notNull(),
+  category: screeningCategoryEnum("category").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const autoApplyLogs = pgTable("auto_apply_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  applicationId: uuid("application_id")
+    .references(() => jobApplications.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  site: autoApplySiteEnum("site").notNull(),
+  status: autoApplyStatusEnum("status").notNull(),
+  errorMessage: text("error_message"),
+  formData: json("form_data").$type<Record<string, unknown>>(),
+  jobUrl: text("job_url"),
+  attemptedAt: timestamp("attempted_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // ════════════════════════════════════════════
@@ -510,6 +581,8 @@ export const userRelations = relations(users, ({ one, many }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
   notifications: many(notifications),
+  extensionTokens: many(extensionTokens),
+  autoApplyLogs: many(autoApplyLogs),
 }));
 
 export const accountRelations = relations(accounts, ({ one }) => ({
@@ -539,6 +612,7 @@ export const profileRelations = relations(profiles, ({ one, many }) => ({
   crsScores: many(crsScores),
   documents: many(documents),
   assignedSteps: many(journeySteps),
+  screeningAnswers: many(screeningAnswers),
 }));
 
 export const languageTestRelations = relations(languageTests, ({ one }) => ({
@@ -635,5 +709,30 @@ export const achievementRelations = relations(achievements, ({ one }) => ({
   household: one(households, {
     fields: [achievements.householdId],
     references: [households.id],
+  }),
+}));
+
+export const extensionTokenRelations = relations(extensionTokens, ({ one }) => ({
+  user: one(users, {
+    fields: [extensionTokens.userId],
+    references: [users.id],
+  }),
+}));
+
+export const screeningAnswerRelations = relations(screeningAnswers, ({ one }) => ({
+  profile: one(profiles, {
+    fields: [screeningAnswers.profileId],
+    references: [profiles.id],
+  }),
+}));
+
+export const autoApplyLogRelations = relations(autoApplyLogs, ({ one }) => ({
+  application: one(jobApplications, {
+    fields: [autoApplyLogs.applicationId],
+    references: [jobApplications.id],
+  }),
+  user: one(users, {
+    fields: [autoApplyLogs.userId],
+    references: [users.id],
   }),
 }));
