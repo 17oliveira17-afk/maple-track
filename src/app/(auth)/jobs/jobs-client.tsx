@@ -5,8 +5,8 @@ import {
   Search, ChevronRight, ExternalLink, Sparkles,
   Clock, CheckCircle2, XCircle, Star, MessageSquare, FileText,
   Plus, Loader2, ArrowRight, MapPin, DollarSign,
-  RefreshCw, Upload, Puzzle,
-  Mail, Send, AlertCircle, Copy, Zap,
+  RefreshCw, Upload, Puzzle, Globe, Target, TrendingUp,
+  Mail, Send, AlertCircle, Copy, Zap, Calendar, Briefcase,
   ShieldCheck, ToggleLeft, ToggleRight,
 } from "lucide-react";
 import { ExtensionTab } from "@/components/jobs/extension-tab";
@@ -833,24 +833,277 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
   // Current search profile for job-fit scoring
   const activeProfile = profiles.find(p => p.id === searchProfile);
 
+  // ─── Dashboard computed data ───
+  const primaryCv = !!primaryProfile?.prefs?.cvText;
+  const spouseCv = !!spouseProfile?.prefs?.cvText;
+
+  const journeyPhases = useMemo(() => {
+    const savedCount = apps.filter(a => a.status === "SAVED").length;
+    const appliedCount = apps.filter(a => ["APPLIED", "VIEWED"].includes(a.status)).length;
+    const interviewCount = apps.filter(a => a.status === "INTERVIEW").length;
+    const offerCount = apps.filter(a => a.status === "OFFER").length;
+    const aipCount = apps.filter(a => a.isAip).length;
+
+    type JStep = { label: string; done: boolean; detail?: string };
+    const phases: { phase: string; color: "primary" | "accent" | "success"; steps: JStep[] }[] = [
+      {
+        phase: "Preparação",
+        color: "primary",
+        steps: [
+          { label: "Perfis configurados", done: profiles.length >= 2 },
+          { label: "CV Rafael", done: primaryCv },
+          { label: spouseProfile ? "CV Luana" : "Perfil cônjuge", done: spouseProfile ? spouseCv : false },
+        ],
+      },
+      {
+        phase: "Candidaturas",
+        color: "accent",
+        steps: [
+          { label: "Vagas salvas", done: savedCount > 0 || appliedCount > 0, detail: savedCount > 0 ? `${savedCount} pendentes` : undefined },
+          { label: "Candidaturas enviadas", done: appliedCount > 0, detail: appliedCount > 0 ? `${appliedCount} ativas` : undefined },
+          { label: "Entrevistas", done: interviewCount > 0, detail: interviewCount > 0 ? `${interviewCount} agendadas` : undefined },
+        ],
+      },
+      {
+        phase: "Imigração",
+        color: "success",
+        steps: [
+          { label: "Oferta de emprego", done: offerCount > 0 },
+          { label: "LMIA / Work Permit", done: false },
+          { label: "Residência Permanente", done: false, detail: aipCount > 0 ? `${aipCount} vagas AIP` : undefined },
+        ],
+      },
+    ];
+    return phases;
+  }, [apps, profiles, primaryCv, spouseCv, spouseProfile]);
+
+  const totalSteps = journeyPhases.reduce((sum, p) => sum + p.steps.length, 0);
+  const completedSteps = journeyPhases.reduce((sum, p) => sum + p.steps.filter(s => s.done).length, 0);
+  const overallPercent = Math.round((completedSteps / totalSteps) * 100);
+
+  const todaysFocus = useMemo(() => {
+    const items: { key: string; icon: React.ReactNode; title: string; desc: string; action?: () => void; priority: "high" | "medium" | "low" }[] = [];
+
+    if (!primaryCv) items.push({ key: "cv-primary", icon: <FileText className="h-4 w-4" />, title: `Currículo de ${primaryProfile.firstName || "Rafael"}`, desc: "Necessário para a IA aplicar", action: () => setView("cv"), priority: "high" });
+    if (spouseProfile && !spouseCv) items.push({ key: "cv-spouse", icon: <FileText className="h-4 w-4" />, title: `Currículo de ${spouseProfile.firstName || "Luana"}`, desc: "Configure para aplicar em paralelo", action: () => setView("cv"), priority: "high" });
+
+    const savedApps = apps.filter(a => a.status === "SAVED");
+    if (savedApps.length > 0) items.push({ key: "saved", icon: <Zap className="h-4 w-4" />, title: `${savedApps.length} vaga${savedApps.length > 1 ? "s" : ""} salva${savedApps.length > 1 ? "s" : ""}`, desc: "Aplique com IA em 1 clique", priority: "medium" });
+
+    const staleApps = apps.filter(a => {
+      if (a.status !== "APPLIED" || !a.appliedAt) return false;
+      return (Date.now() - new Date(a.appliedAt).getTime()) > 7 * 86400000;
+    });
+    if (staleApps.length > 0) items.push({ key: "followup", icon: <Clock className="h-4 w-4" />, title: `Follow-up em ${staleApps.length} candidatura${staleApps.length > 1 ? "s" : ""}`, desc: "Sem resposta há mais de 7 dias", priority: "medium" });
+
+    const interviews = apps.filter(a => a.status === "INTERVIEW");
+    if (interviews.length > 0) items.push({ key: "interviews", icon: <MessageSquare className="h-4 w-4" />, title: `${interviews.length} entrevista${interviews.length > 1 ? "s" : ""} em andamento`, desc: "Prepare-se e acompanhe", priority: "high" });
+
+    const offers = apps.filter(a => a.status === "OFFER");
+    if (offers.length > 0) items.push({ key: "offers", icon: <Sparkles className="h-4 w-4" />, title: `${offers.length} oferta${offers.length > 1 ? "s" : ""}!`, desc: "Próximo passo: iniciar processo LMIA", priority: "high" });
+
+    if (primaryCv && apps.length === 0) items.push({ key: "first-search", icon: <Search className="h-4 w-4" />, title: "Busque suas primeiras vagas", desc: "LinkedIn, Indeed, Job Bank — tudo em um", priority: "high" });
+
+    if (items.length === 0) items.push({ key: "keep-going", icon: <TrendingUp className="h-4 w-4" />, title: "Continue buscando", desc: "Novas vagas aparecem diariamente", priority: "low" });
+
+    return items.sort((a, b) => { const p = { high: 0, medium: 1, low: 2 }; return p[a.priority] - p[b.priority]; });
+  }, [apps, primaryCv, spouseCv, primaryProfile, spouseProfile]);
+
+  const macroMetrics = useMemo(() => {
+    const firstApp = apps.length > 0 ? apps.reduce((oldest, a) => new Date(a.createdAt) < new Date(oldest.createdAt) ? a : oldest) : null;
+    const daysOnJourney = firstApp ? Math.max(1, Math.floor((Date.now() - new Date(firstApp.createdAt).getTime()) / 86400000)) : 0;
+    const thisWeekApps = apps.filter(a => (Date.now() - new Date(a.createdAt).getTime()) < 7 * 86400000).length;
+    const responseRate = allStats.applied > 0 ? Math.round((allStats.interviews / allStats.applied) * 100) : 0;
+    const aipApps = apps.filter(a => a.isAip).length;
+    return { daysOnJourney, thisWeekApps, responseRate, aipApps };
+  }, [apps, allStats]);
+
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Vagas & Imigração</h1>
-          <p className="text-sm text-foreground-muted">Descubra, aplique com IA e acompanhe seu caminho até o PR</p>
+          <p className="text-sm text-foreground-muted">Sua jornada até a residência permanente no Canadá</p>
         </div>
         <div className="flex gap-1.5">
           <button onClick={() => setView("cv")} className="flex items-center gap-1.5 rounded-xl border border-border/60 bg-white px-3 py-2 text-xs font-semibold text-foreground-muted hover:border-primary/40 hover:text-primary transition-all">
             <FileText className="h-3.5 w-3.5" />
-            Currículo
+            CV
           </button>
           <button onClick={() => setView("extension")} className="flex items-center gap-1.5 rounded-xl border border-border/60 bg-white px-3 py-2 text-xs font-semibold text-foreground-muted hover:border-primary/40 hover:text-primary transition-all">
             <Puzzle className="h-3.5 w-3.5" />
             Extensão
           </button>
         </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════ */}
+      {/* ─── IMMIGRATION JOURNEY MAP (Macro View) ─── */}
+      {/* ═══════════════════════════════════════════ */}
+      <div className="rounded-2xl border border-border/60 bg-white shadow-sm overflow-hidden">
+        {/* Journey header with overall progress */}
+        <div className="flex items-center justify-between px-5 pt-4 pb-2">
+          <div className="flex items-center gap-2">
+            <Globe className="h-4.5 w-4.5 text-primary" />
+            <h2 className="text-sm font-bold text-foreground">Jornada de Imigração</h2>
+          </div>
+          <div className="flex items-center gap-3">
+            {macroMetrics.daysOnJourney > 0 && (
+              <span className="text-[10px] text-foreground-dim">Dia {macroMetrics.daysOnJourney}</span>
+            )}
+            <div className="flex items-center gap-1.5">
+              <div className="h-2 w-20 rounded-full bg-surface">
+                <div className="h-2 rounded-full bg-gradient-to-r from-primary via-accent to-success transition-all duration-700" style={{ width: `${overallPercent}%` }} />
+              </div>
+              <span className="text-xs font-bold text-primary">{overallPercent}%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 3-Phase Journey Map */}
+        <div className="grid grid-cols-3 divide-x divide-border/40 px-1 pb-4">
+          {journeyPhases.map((phase) => {
+            const phaseComplete = phase.steps.filter(s => s.done).length;
+            const phaseTotal = phase.steps.length;
+            const phasePercent = Math.round((phaseComplete / phaseTotal) * 100);
+            const colorMap = { primary: { bg: "bg-primary", text: "text-primary", light: "bg-primary/10", ring: "ring-primary/20" }, accent: { bg: "bg-accent", text: "text-accent", light: "bg-accent/10", ring: "ring-accent/20" }, success: { bg: "bg-success", text: "text-success", light: "bg-success/10", ring: "ring-success/20" } };
+            const c = colorMap[phase.color];
+            return (
+              <div key={phase.phase} className="px-4 pt-2 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${c.text}`}>{phase.phase}</span>
+                  <span className={`text-[10px] font-bold ${phasePercent === 100 ? "text-success" : "text-foreground-dim"}`}>{phaseComplete}/{phaseTotal}</span>
+                </div>
+                <div className="h-1 rounded-full bg-surface">
+                  <div className={`h-1 rounded-full ${c.bg} transition-all duration-500`} style={{ width: `${phasePercent}%` }} />
+                </div>
+                <div className="space-y-1.5">
+                  {phase.steps.map((step) => (
+                    <div key={step.label} className="flex items-start gap-2">
+                      <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${step.done ? `${c.light} ${c.text}` : "bg-surface text-foreground-dim"}`}>
+                        {step.done ? <CheckCircle2 className="h-2.5 w-2.5" /> : <div className="h-1.5 w-1.5 rounded-full bg-current opacity-40" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className={`text-[11px] font-semibold leading-tight ${step.done ? "text-foreground" : "text-foreground-dim"}`}>{step.label}</p>
+                        {step.detail && <p className={`text-[9px] ${c.text}`}>{step.detail}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════ */}
+      {/* ─── TODAY'S FOCUS (Daily View) ─── */}
+      {/* ═══════════════════════════════════════════ */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-bold text-foreground">Foco de Hoje</h2>
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {todaysFocus.map((item) => (
+            <button
+              key={item.key}
+              onClick={item.action}
+              className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-all hover:shadow-md ${
+                item.priority === "high"
+                  ? "border-primary/30 bg-primary/5 hover:border-primary/50"
+                  : item.priority === "medium"
+                  ? "border-warning/30 bg-warning/5 hover:border-warning/50"
+                  : "border-border/60 bg-white hover:border-primary/30"
+              }`}
+            >
+              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                item.priority === "high" ? "bg-primary/15 text-primary" : item.priority === "medium" ? "bg-warning/15 text-warning" : "bg-surface text-foreground-muted"
+              }`}>
+                {item.icon}
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-foreground">{item.title}</p>
+                <p className="text-[10px] text-foreground-muted">{item.desc}</p>
+              </div>
+              {item.action && <ArrowRight className="h-3.5 w-3.5 shrink-0 text-foreground-dim" />}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════ */}
+      {/* ─── MACRO METRICS + PROFILES ─── */}
+      {/* ═══════════════════════════════════════════ */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-xl border border-border/60 bg-white p-3 shadow-sm text-center">
+          <Briefcase className="mx-auto h-4 w-4 text-primary mb-1" />
+          <p className="text-xl font-bold text-primary">{allStats.applied}</p>
+          <p className="text-[10px] text-foreground-dim">Aplicadas</p>
+        </div>
+        <div className="rounded-xl border border-border/60 bg-white p-3 shadow-sm text-center">
+          <TrendingUp className="mx-auto h-4 w-4 text-accent mb-1" />
+          <p className="text-xl font-bold text-accent">{macroMetrics.thisWeekApps}</p>
+          <p className="text-[10px] text-foreground-dim">Esta semana</p>
+        </div>
+        <div className="rounded-xl border border-border/60 bg-white p-3 shadow-sm text-center">
+          <Target className="mx-auto h-4 w-4 text-success mb-1" />
+          <p className="text-xl font-bold text-success">{macroMetrics.responseRate}%</p>
+          <p className="text-[10px] text-foreground-dim">Taxa resposta</p>
+        </div>
+        <div className="rounded-xl border border-border/60 bg-white p-3 shadow-sm text-center">
+          <Globe className="mx-auto h-4 w-4 text-warning mb-1" />
+          <p className="text-xl font-bold text-warning">{macroMetrics.aipApps}</p>
+          <p className="text-[10px] text-foreground-dim">Vagas AIP</p>
+        </div>
+      </div>
+
+      {/* Dual Profile Progress */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {[
+          { profile: primaryProfile, stats: primaryStats },
+          ...(spouseProfile ? [{ profile: spouseProfile, stats: spouseStats! }] : []),
+        ].map(({ profile, stats }) => {
+          const pCv = !!profile.prefs?.cvText;
+          const pApplied = stats.applied;
+          const pInterviews = stats.interviews;
+          const pProgress = [pCv, pApplied > 0, pInterviews > 0, stats.offers > 0].filter(Boolean).length;
+          return (
+            <div key={profile.id} className="rounded-xl border border-border/60 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="relative">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-sm font-bold text-primary">
+                    {initials(profile)}
+                  </div>
+                  <div className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white ${pCv ? "bg-success" : "bg-warning"}`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-foreground">{fullName(profile)}</p>
+                  <p className="text-xs text-foreground-muted truncate">
+                    {profile.prefs?.jobTitles?.[0] || (profile.isPrimaryApplicant ? "Product Designer" : "Early Childhood Educator")}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { label: "CV", done: pCv, value: pCv ? "OK" : "—" },
+                  { label: "Aplicadas", done: pApplied > 0, value: String(pApplied) },
+                  { label: "Entrevistas", done: pInterviews > 0, value: String(pInterviews) },
+                  { label: "Ofertas", done: stats.offers > 0, value: String(stats.offers) },
+                ].map((m) => (
+                  <div key={m.label} className="text-center">
+                    <p className={`text-sm font-bold ${m.done ? "text-success" : "text-foreground-dim"}`}>{m.value}</p>
+                    <p className="text-[9px] text-foreground-dim">{m.label}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 h-1 rounded-full bg-surface">
+                <div className="h-1 rounded-full bg-gradient-to-r from-primary to-success transition-all" style={{ width: `${pProgress * 25}%` }} />
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* ─── Search Bar ─── */}
@@ -887,66 +1140,6 @@ export function JobsClient({ profiles, applications: initApps }: Props) {
             Buscar
           </button>
         </div>
-      </div>
-
-      {/* ─── CV Setup Banner ─── */}
-      {!hasCv && (
-        <button
-          onClick={() => setView("cv")}
-          className="flex w-full items-center gap-3 rounded-2xl border border-warning/30 bg-warning/5 p-4 text-left hover:bg-warning/10 transition-all"
-        >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning/15">
-            <FileText className="h-5 w-5 text-warning" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-bold text-foreground">Configure seu currículo</p>
-            <p className="text-xs text-foreground-muted">Necessário para a IA gerar cover letters e aplicar automaticamente</p>
-          </div>
-          <ArrowRight className="h-4 w-4 text-warning" />
-        </button>
-      )}
-
-      {/* ─── Stats Strip ─── */}
-      <div className="grid grid-cols-4 gap-3">
-        {[
-          { label: "Total", value: allStats.total, color: "text-foreground-muted" },
-          { label: "Aplicadas", value: allStats.applied, color: "text-primary" },
-          { label: "Entrevistas", value: allStats.interviews, color: "text-success" },
-          { label: "Ofertas", value: allStats.offers, color: "text-warning" },
-        ].map((s) => (
-          <div key={s.label} className="rounded-xl border border-border/60 bg-white px-4 py-3 shadow-sm text-center">
-            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-[10px] text-foreground-dim">{s.label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* ─── Profiles Row ─── */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {[
-          { profile: primaryProfile, stats: primaryStats },
-          ...(spouseProfile ? [{ profile: spouseProfile, stats: spouseStats! }] : []),
-        ].map(({ profile, stats }) => (
-          <div key={profile.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-white p-3 shadow-sm">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-bold text-primary">
-              {initials(profile)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-foreground">{fullName(profile)}</p>
-              <p className="text-xs text-foreground-muted truncate">
-                {profile.prefs?.jobTitles?.[0] || (profile.isPrimaryApplicant ? "Product Designer" : "Early Childhood Educator")}
-              </p>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              {profile.prefs?.cvText ? (
-                <span className="flex items-center gap-0.5 text-[10px] font-semibold text-success"><CheckCircle2 className="h-3 w-3" /> CV</span>
-              ) : (
-                <span className="flex items-center gap-0.5 text-[10px] font-semibold text-warning"><AlertCircle className="h-3 w-3" /> CV</span>
-              )}
-              <p className="text-lg font-bold text-primary">{stats.applied}</p>
-            </div>
-          </div>
-        ))}
       </div>
 
       {/* ─── Search Results ─── */}
